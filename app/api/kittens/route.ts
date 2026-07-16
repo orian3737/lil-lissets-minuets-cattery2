@@ -46,7 +46,7 @@ function normalize(payload: Partial<Kitten>): Kitten {
   };
 }
 
-async function seedIfEmpty(db: D1Database) {
+async function seedIfEmpty(db: Awaited<ReturnType<typeof getD1>>) {
   const count = await db.prepare("SELECT COUNT(*) as count FROM kittens").first<{ count: number }>();
   if ((count?.count ?? 0) > 0) return;
   await db.batch(

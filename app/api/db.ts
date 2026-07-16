@@ -1,5 +1,3 @@
-import { env } from "cloudflare:workers";
-
 export type DbKittenRow = {
   id: number;
   name: string;
@@ -31,25 +29,42 @@ export type DbPostRow = {
   published_at: string;
 };
 
-type EnvWithStorage = {
-  DB?: D1Database;
-  KITTEN_MEDIA?: R2Bucket;
+type PreparedStatement = {
+  bind: (...values: unknown[]) => PreparedStatement;
+  first: <T = unknown>() => Promise<T | null>;
+  all: <T = unknown>() => Promise<{ results: T[] }>;
+  run: () => Promise<unknown>;
 };
 
-export function getD1() {
-  const db = (env as EnvWithStorage).DB;
-  if (!db) {
-    throw new Error("The site database is not available yet.");
-  }
-  return db;
+type ServerDatabase = {
+  prepare: (query: string) => PreparedStatement;
+  batch: (statements: PreparedStatement[]) => Promise<unknown>;
+};
+
+type ServerMediaBucket = {
+  get: (key: string) => Promise<{
+    body: BodyInit | null;
+    httpEtag: string;
+    writeHttpMetadata: (headers: Headers) => void;
+  } | null>;
+  put: (
+    key: string,
+    value: ArrayBuffer,
+    options: { httpMetadata: { contentType: string } },
+  ) => Promise<unknown>;
+};
+
+type EnvWithStorage = {
+  DB?: ServerDatabase;
+  KITTEN_MEDIA?: ServerMediaBucket;
+};
+
+export function getD1(): ServerDatabase {
+  throw new Error("Server database storage is not configured for this deployment.");
 }
 
-export function getMediaBucket() {
-  const bucket = (env as EnvWithStorage).KITTEN_MEDIA;
-  if (!bucket) {
-    throw new Error("The media bucket is not available yet.");
-  }
-  return bucket;
+export function getMediaBucket(): ServerMediaBucket {
+  throw new Error("Server media storage is not configured for this deployment.");
 }
 
 export async function ensureTables(db = getD1()) {
