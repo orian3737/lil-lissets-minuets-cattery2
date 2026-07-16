@@ -2,7 +2,6 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { aiBlogPrompt, assets, BlogPost, Kitten } from "./data";
-import { OWNER_ACCESS_CODE, OWNER_EMAIL, OWNER_EMAILS } from "./owner";
 
 const OWNER_SESSION_KEY = "lil-lissets-owner-session";
 const LOCAL_KITTENS_KEY = "lil-lissets-owner-kittens";
@@ -158,28 +157,32 @@ export function OwnerStudioGate() {
   const [email, setEmail] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [signedIn, setSignedIn] = useState(false);
-  const [sessionEmail, setSessionEmail] = useState(OWNER_EMAIL);
+  const [sessionEmail, setSessionEmail] = useState("owner");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     const storedEmail = localStorage.getItem(OWNER_SESSION_KEY);
-    if (storedEmail && OWNER_EMAILS.includes(storedEmail)) {
+    if (storedEmail) {
       setSessionEmail(storedEmail);
       setSignedIn(true);
     }
   }, []);
 
-  function signIn(event: FormEvent<HTMLFormElement>) {
+  async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const normalized = email.trim().toLowerCase();
-    if (!OWNER_EMAILS.includes(normalized)) {
-      setMessage("Owner access is limited to approved cattery emails.");
+
+    const response = await fetch("/api/owner-login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: normalized, accessCode }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      setMessage(payload?.error ?? "Owner access was not approved.");
       return;
     }
-    if (accessCode.trim() !== OWNER_ACCESS_CODE) {
-      setMessage("That access code does not match.");
-      return;
-    }
+
     localStorage.setItem(OWNER_SESSION_KEY, normalized);
     setSessionEmail(normalized);
     setSignedIn(true);
@@ -204,7 +207,7 @@ export function OwnerStudioGate() {
               autoComplete="email"
               inputMode="email"
               onChange={(event) => setEmail(event.target.value)}
-              placeholder={OWNER_EMAIL}
+              placeholder="Owner email"
               type="email"
               value={email}
               required
