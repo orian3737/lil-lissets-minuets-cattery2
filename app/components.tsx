@@ -1,7 +1,12 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { aiBlogPrompt, BlogPost, Kitten } from "./data";
+import { aiBlogPrompt, assets, BlogPost, Kitten } from "./data";
+import { OWNER_ACCESS_CODE, OWNER_EMAIL, OWNER_EMAILS } from "./owner";
+
+const OWNER_SESSION_KEY = "lil-lissets-owner-session";
+const LOCAL_KITTENS_KEY = "lil-lissets-owner-kittens";
+const LOCAL_POSTS_KEY = "lil-lissets-owner-posts";
 
 type KittenBoardProps = {
   initialKittens: Kitten[];
@@ -9,14 +14,16 @@ type KittenBoardProps = {
 
 export function KittenBoard({ initialKittens }: KittenBoardProps) {
   const [kittens, setKittens] = useState(initialKittens);
-  const [filter, setFilter] = useState<"available" | "all">("available");
+  const [filter, setFilter] = useState<"available" | "all">("all");
 
   useEffect(() => {
     let cancelled = false;
+    const localKittens = readLocal<Kitten[]>(LOCAL_KITTENS_KEY);
+    if (localKittens?.length) setKittens(localKittens);
     fetch("/api/kittens")
       .then((response) => (response.ok ? response.json() : null))
       .then((payload: { kittens?: Kitten[] } | null) => {
-        if (!cancelled && payload?.kittens?.length) {
+        if (!cancelled && payload?.kittens?.length && !localKittens?.length) {
           setKittens(payload.kittens);
         }
       })
@@ -27,21 +34,21 @@ export function KittenBoard({ initialKittens }: KittenBoardProps) {
   }, []);
 
   const visible = useMemo(() => {
-    const source = kittens.filter((kitten) => kitten.status !== "hidden");
+    const publicKittens = kittens.filter((kitten) => kitten.status !== "hidden");
     return filter === "available"
-      ? source.filter((kitten) => kitten.status === "available")
-      : source;
+      ? publicKittens.filter((kitten) => kitten.status === "available")
+      : publicKittens;
   }, [filter, kittens]);
 
   return (
-    <section id="kittens" className="section kitten-section">
-      <div className="section-heading">
-        <p className="eyebrow">Current kittens</p>
-        <h2>Available and recently placed kittens</h2>
+    <section className="kitten-sales" aria-labelledby="kitten-sales-title">
+      <div className="section-heading centered">
+        <p className="eyebrow">Kittens for sale</p>
+        <h2 id="kitten-sales-title">Available kittens and sold gallery</h2>
         <p>
-          Every profile keeps the information families ask for most: sex, birth
-          date, standard, TICA status, show quality, mother, breed, availability,
-          and price.
+          Each listing keeps the current site fields intact: sex, birth date,
+          standard, TICA status, show quality, availability, mother, breed, and
+          price.
         </p>
       </div>
       <div className="toolbar" aria-label="Kitten filters">
@@ -57,32 +64,31 @@ export function KittenBoard({ initialKittens }: KittenBoardProps) {
           onClick={() => setFilter("all")}
           type="button"
         >
-          All public listings
+          All listings
         </button>
       </div>
       <div className="kitten-grid">
         {visible.map((kitten) => (
           <article className="kitten-card" key={`${kitten.id}-${kitten.name}`}>
             <div className="kitten-photo">
-              <img src={kitten.imageUrl || "/hero-cattery.png"} alt={kitten.name} />
+              <img src={kitten.imageUrl || assets.placeholder} alt={kitten.name} />
               <span className={`status ${kitten.status}`}>{kitten.status}</span>
             </div>
             <div className="kitten-body">
-              <div>
-                <h3>{kitten.name}</h3>
-                <p>{kitten.notes}</p>
-              </div>
+              <h3>{kitten.name}</h3>
+              <p>{kitten.notes}</p>
               <dl>
                 <div><dt>Sex</dt><dd>{kitten.sex}</dd></div>
                 <div><dt>Born</dt><dd>{kitten.born}</dd></div>
                 <div><dt>Standard</dt><dd>{kitten.standard}</dd></div>
                 <div><dt>TICA</dt><dd>{kitten.tica}</dd></div>
-                <div><dt>Show</dt><dd>{kitten.showQuality}</dd></div>
+                <div><dt>Show Quality</dt><dd>{kitten.showQuality}</dd></div>
+                <div><dt>Availability</dt><dd>{kitten.availability}</dd></div>
                 <div><dt>Mother</dt><dd>{kitten.mother}</dd></div>
                 <div><dt>Breed</dt><dd>{kitten.breed}</dd></div>
                 <div><dt>Price</dt><dd>{kitten.price}</dd></div>
               </dl>
-              <a className="text-link" href="#contact">
+              <a className="text-link" href="/contact">
                 Ask about {kitten.name}
               </a>
             </div>
@@ -98,15 +104,19 @@ type BlogPreviewProps = {
 };
 
 export function BlogPreview({ initialPosts }: BlogPreviewProps) {
-  const [posts, setPosts] = useState(initialPosts);
+  const [posts, setPosts] = useState(initialPosts.filter((post) => post.status === "published"));
 
   useEffect(() => {
     let cancelled = false;
+    const localPosts = readLocal<BlogPost[]>(LOCAL_POSTS_KEY)?.filter(
+      (post) => post.status === "published",
+    );
+    if (localPosts?.length) setPosts(localPosts);
     fetch("/api/blog")
       .then((response) => (response.ok ? response.json() : null))
       .then((payload: { posts?: BlogPost[] } | null) => {
         const published = payload?.posts?.filter((post) => post.status === "published");
-        if (!cancelled && published?.length) setPosts(published);
+        if (!cancelled && published?.length && !localPosts?.length) setPosts(published);
       })
       .catch(() => undefined);
     return () => {
@@ -115,21 +125,22 @@ export function BlogPreview({ initialPosts }: BlogPreviewProps) {
   }, []);
 
   return (
-    <section id="blog" className="section blog-section">
+    <section className="blog-section" aria-labelledby="blog-preview-title">
       <div className="section-heading">
-        <p className="eyebrow">Blog and SEO</p>
-        <h2>Education that helps families find you</h2>
+        <p className="eyebrow">Cattery journal</p>
+        <h2 id="blog-preview-title">Helpful notes for Minuet families</h2>
         <p>
-          The blog is built for regular Minuet care articles, availability
-          updates, and search-friendly pages that can be drafted with AI and
-          reviewed before publishing.
+          Read kitten care tips, breed notes, cattery updates, and gentle
+          guidance for families preparing to welcome a Minuet kitten.
         </p>
       </div>
       <div className="blog-list">
         {posts.map((post) => (
           <article className="blog-card" key={post.slug}>
             <p>{post.publishedAt || "Draft"}</p>
-            <h3>{post.title}</h3>
+            <h3>
+              <a href={`/blog/${post.slug}`}>{post.title}</a>
+            </h3>
             <p>{post.excerpt}</p>
             <span>{post.keywords}</span>
           </article>
@@ -143,6 +154,87 @@ type StudioProps = {
   userLabel: string;
 };
 
+export function OwnerStudioGate() {
+  const [email, setEmail] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+  const [signedIn, setSignedIn] = useState(false);
+  const [sessionEmail, setSessionEmail] = useState(OWNER_EMAIL);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    const storedEmail = localStorage.getItem(OWNER_SESSION_KEY);
+    if (storedEmail && OWNER_EMAILS.includes(storedEmail)) {
+      setSessionEmail(storedEmail);
+      setSignedIn(true);
+    }
+  }, []);
+
+  function signIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalized = email.trim().toLowerCase();
+    if (!OWNER_EMAILS.includes(normalized)) {
+      setMessage("Owner access is limited to approved cattery emails.");
+      return;
+    }
+    if (accessCode.trim() !== OWNER_ACCESS_CODE) {
+      setMessage("That access code does not match.");
+      return;
+    }
+    localStorage.setItem(OWNER_SESSION_KEY, normalized);
+    setSessionEmail(normalized);
+    setSignedIn(true);
+  }
+
+  if (signedIn) return <OwnerStudio userLabel={sessionEmail} />;
+
+  return (
+    <main className="studio">
+      <section className="studio-panel owner-login-panel">
+        <p className="eyebrow">Owner login</p>
+        <h1>Manage kittens and blog posts</h1>
+        <p>
+          Sign in with the owner email to unlock the local preview studio. This
+          keeps kitten and blog edits in this browser until Supabase or Netlify
+          storage is connected.
+        </p>
+        <form onSubmit={signIn}>
+          <label>
+            <span>Email</span>
+            <input
+              autoComplete="email"
+              inputMode="email"
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder={OWNER_EMAIL}
+              type="email"
+              value={email}
+              required
+            />
+          </label>
+          <label>
+            <span>Access code</span>
+            <input
+              autoComplete="current-password"
+              onChange={(event) => setAccessCode(event.target.value)}
+              type="password"
+              value={accessCode}
+              required
+            />
+          </label>
+          {message ? <p>{message}</p> : null}
+          <div className="form-actions">
+            <button className="button" type="submit">
+              Enter studio
+            </button>
+            <a className="button light" href="/">
+              View site
+            </a>
+          </div>
+        </form>
+      </section>
+    </main>
+  );
+}
+
 const emptyKitten: Kitten = {
   name: "",
   sex: "",
@@ -155,7 +247,7 @@ const emptyKitten: Kitten = {
   breed: "Minuet",
   price: "",
   status: "available",
-  imageUrl: "/hero-cattery.png",
+  imageUrl: assets.placeholder,
   notes: "",
 };
 
@@ -184,13 +276,18 @@ export function OwnerStudio({ userLabel }: StudioProps) {
   }, []);
 
   async function refreshAll() {
+    const localKittens = readLocal<Kitten[]>(LOCAL_KITTENS_KEY);
+    const localPosts = readLocal<BlogPost[]>(LOCAL_POSTS_KEY);
+    if (localKittens?.length) setKittens(localKittens);
+    if (localPosts?.length) setPosts(localPosts);
+
     const [kittenPayload, postPayload] = await Promise.all([
       fetch("/api/kittens").then((response) => response.json()).catch(() => ({ kittens: [] })),
       fetch("/api/blog").then((response) => response.json()).catch(() => ({ posts: [] })),
     ]);
-    setKittens(kittenPayload.kittens ?? []);
-    setPosts(postPayload.posts ?? []);
-    setMessage("Ready to update the site.");
+    if (!localKittens?.length) setKittens(kittenPayload.kittens ?? []);
+    if (!localPosts?.length) setPosts(postPayload.posts ?? []);
+    setMessage("Ready to update the local preview.");
   }
 
   async function saveKitten(event: FormEvent<HTMLFormElement>) {
@@ -201,19 +298,27 @@ export function OwnerStudio({ userLabel }: StudioProps) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(kittenForm),
     });
-    setMessage(response.ok ? "Kitten listing saved." : "Could not save kitten.");
-    if (response.ok) {
-      setKittenForm(emptyKitten);
-      refreshAll();
-    }
+    const next = upsertLocalKitten(kittens, kittenForm);
+    setKittens(next);
+    writeLocal(LOCAL_KITTENS_KEY, next);
+    setMessage(
+      response.ok
+        ? "Kitten listing saved."
+        : "Kitten listing saved to this browser preview.",
+    );
+    setKittenForm(emptyKitten);
   }
 
   async function removeKitten(id?: number) {
     if (!id) return;
     setMessage("Removing kitten...");
     const response = await fetch(`/api/kittens?id=${id}`, { method: "DELETE" });
-    setMessage(response.ok ? "Kitten removed from inventory." : "Could not remove kitten.");
-    if (response.ok) refreshAll();
+    const next = kittens.filter((kitten) => kitten.id !== id);
+    setKittens(next);
+    writeLocal(LOCAL_KITTENS_KEY, next);
+    setMessage(
+      response.ok ? "Kitten removed from inventory." : "Kitten removed from local preview.",
+    );
   }
 
   async function uploadPhoto(file: File | null) {
@@ -227,7 +332,9 @@ export function OwnerStudio({ userLabel }: StudioProps) {
       setKittenForm((current) => ({ ...current, imageUrl: payload.url }));
       setMessage("Photo uploaded. Save the kitten to publish it.");
     } else {
-      setMessage("Could not upload that photo.");
+      const dataUrl = await fileToDataUrl(file);
+      setKittenForm((current) => ({ ...current, imageUrl: dataUrl }));
+      setMessage("Photo added to this browser preview. Save the kitten to publish it here.");
     }
   }
 
@@ -239,11 +346,11 @@ export function OwnerStudio({ userLabel }: StudioProps) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(postForm),
     });
-    setMessage(response.ok ? "Blog post saved." : "Could not save blog post.");
-    if (response.ok) {
-      setPostForm(emptyPost);
-      refreshAll();
-    }
+    const next = upsertLocalPost(posts, postForm);
+    setPosts(next);
+    writeLocal(LOCAL_POSTS_KEY, next);
+    setMessage(response.ok ? "Blog post saved." : "Blog post saved to this browser preview.");
+    setPostForm(emptyPost);
   }
 
   return (
@@ -257,6 +364,16 @@ export function OwnerStudio({ userLabel }: StudioProps) {
         <a className="button secondary" href="/">
           View site
         </a>
+        <button
+          className="button light"
+          type="button"
+          onClick={() => {
+            localStorage.removeItem(OWNER_SESSION_KEY);
+            location.reload();
+          }}
+        >
+          Sign out
+        </button>
       </header>
 
       <section className="studio-grid">
@@ -323,10 +440,10 @@ export function OwnerStudio({ userLabel }: StudioProps) {
           <h2>Inventory</h2>
           {kittens.map((kitten) => (
             <div className="studio-row" key={`${kitten.id}-${kitten.name}`}>
-              <img src={kitten.imageUrl || "/hero-cattery.png"} alt="" />
+              <img src={kitten.imageUrl || assets.placeholder} alt="" />
               <div>
                 <strong>{kitten.name}</strong>
-                <span>{kitten.status} · {kitten.availability}</span>
+                <span>{kitten.status} - {kitten.availability}</span>
               </div>
               <button type="button" onClick={() => setKittenForm(kitten)}>Edit</button>
               <button type="button" onClick={() => removeKitten(kitten.id)}>Remove</button>
@@ -363,7 +480,7 @@ export function OwnerStudio({ userLabel }: StudioProps) {
             <div className="studio-row text-row" key={`${post.id}-${post.slug}`}>
               <div>
                 <strong>{post.title}</strong>
-                <span>{post.status} · {post.cadence}</span>
+                <span>{post.status} - {post.cadence}</span>
               </div>
               <button type="button" onClick={() => setPostForm(post)}>Edit</button>
             </div>
@@ -379,4 +496,46 @@ function slugify(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+}
+
+function readLocal<T>(key: string): T | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const value = localStorage.getItem(key);
+    return value ? (JSON.parse(value) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocal<T>(key: string, value: T) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Large image previews can exceed localStorage. Keep the UI responsive.
+  }
+}
+
+function upsertLocalKitten(kittens: Kitten[], kitten: Kitten): Kitten[] {
+  const saved = { ...kitten, id: kitten.id ?? Date.now() };
+  return kitten.id
+    ? kittens.map((item) => (item.id === kitten.id ? saved : item))
+    : [saved, ...kittens];
+}
+
+function upsertLocalPost(posts: BlogPost[], post: BlogPost): BlogPost[] {
+  const saved = { ...post, id: post.id ?? Date.now() };
+  return post.id
+    ? posts.map((item) => (item.id === post.id ? saved : item))
+    : [saved, ...posts];
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }
